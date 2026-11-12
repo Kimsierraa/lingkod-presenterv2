@@ -1,6 +1,7 @@
 const scope = new URL('./', import.meta.url).pathname;
 export const liveKey = 'lingkod-live:' + scope;
 export const draftKey = 'lingkod-drafts:' + scope;
+export const themeKey = 'lingkod-theme:' + scope;
 export const bus = 'BroadcastChannel' in window ? new BroadcastChannel(liveKey) : null;
 
 const database = new Promise((resolve, reject) => {

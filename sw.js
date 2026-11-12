@@ -1,4 +1,4 @@
-const version = 'lingkod-v2-20261112-1';
+const version = 'lingkod-v2-20261113-3';
 const cacheName = version + ':' + self.registration.scope;
 const shell = [
   './index.html', './style.css', './app.mjs', './core.mjs', './stage.mjs', './store.mjs', './ui.mjs',
@@ -6,7 +6,9 @@ const shell = [
 ].map(path => new URL(path, self.registration.scope).href);
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(cacheName).then(cache => cache.addAll(shell)));
+  event.waitUntil(caches.open(cacheName)
+    .then(cache => cache.addAll(shell.map(url => new Request(url, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {

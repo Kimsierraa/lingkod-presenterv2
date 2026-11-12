@@ -51,6 +51,7 @@ function addLyrics(container, text) {
 
 function fit(host) {
   const stage = stages.get(host);
+  if (!stage || stage.lyrics.hidden) return;
   const { lyrics, size } = stage;
   const width = host.clientWidth;
   const height = host.clientHeight;
@@ -72,7 +73,13 @@ function fit(host) {
   lyrics.style.fontSize = low + 'px';
 }
 
-async function backgroundFor(host, stage, id) {
+async function backgroundFor(host, stage, id, fill) {
+  if (fill) {
+    host.style.background = fill;
+    stage.image.hidden = true;
+    stage.image.removeAttribute('src');
+    return;
+  }
   const preset = Object.hasOwn(presets, id) ? presets[id] : null;
   host.style.background = preset?.gradient ?? '#141226';
   stage.image.hidden = true;
@@ -94,7 +101,9 @@ export function drawStage(host, page, config, blank = false) {
   const look = { ...defaultLook, ...config };
   const stage = getStage(host);
   host.classList.toggle('stage-blackout', blank);
-  stage.veil.style.opacity = String(look.dim / 100);
+  stage.lyrics.hidden = blank;
+  const sharedBackdrop = !blank || look.blankBackground === 'current';
+  stage.veil.style.opacity = String(sharedBackdrop ? look.dim / 100 : 0);
   const family = { sans: '"Segoe UI", Arial, sans-serif', serif: 'Georgia, serif', mono: 'Consolas, monospace' };
   stage.lyrics.style.fontFamily = family[look.font] ?? family.sans;
   stage.lyrics.style.fontWeight = String(look.weight);
@@ -106,9 +115,12 @@ export function drawStage(host, page, config, blank = false) {
     stage.text = text;
     addLyrics(stage.lyrics, text);
   }
-  if (stage.background !== look.background) {
-    stage.background = look.background;
-    void backgroundFor(host, stage, look.background);
+  const id = sharedBackdrop ? look.background : look.blankBackground;
+  const fill = blank && id === 'solid' ? look.blankColor : null;
+  const background = fill || id;
+  if (stage.background !== background) {
+    stage.background = background;
+    void backgroundFor(host, stage, background, fill);
   }
   fit(host);
 }

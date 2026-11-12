@@ -8,6 +8,7 @@ export const presets = {
 export const defaultLook = {
   background: 'mountain', dim: 24, font: 'sans', size: 100,
   weight: 700, color: '#ffffff', align: 'center',
+  blankBackground: 'solid', blankColor: '#000000',
 };
 
 const demo = (id, title, pages) => ({

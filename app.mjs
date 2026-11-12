@@ -2,7 +2,7 @@ import {
   adjacentCue, defaultLook, fold, mergeSongs, moveEntry, newWorkspace, normalizeSong,
   parseLibrary, parseSetlist, presets, setlistBundle, songFor, uid,
 } from './core.mjs';
-import { bus, draftKey, forgetMedia, liveKey, publishLive, read, readLocal, write } from './store.mjs';
+import { bus, draftKey, forgetMedia, liveKey, publishLive, read, readLocal, themeKey, write } from './store.mjs';
 import { disposeStage, drawStage, plainLyrics } from './stage.mjs';
 import { button, dataId, escape as e, fileInput, icon, iconButton, inputSearch, key, plural } from './ui.mjs';
 
@@ -109,6 +109,8 @@ function initProjector() {
 
 async function initOperator() {
   let state;
+  let theme = readLocal(themeKey, 'night') === 'day' ? 'day' : 'night';
+  document.documentElement.dataset.theme = theme;
   let view = 'present';
   let projector;
   let projectorSeen = 0;
@@ -120,6 +122,9 @@ async function initOperator() {
   let draft;
   let draftId;
   let latestSnapshot;
+  let sharedLibraryTask;
+  let appearancePanel = 'lyrics';
+  let uploadSlot = 'background';
 
   try {
     state = await read('workspace', 'current');
@@ -129,6 +134,7 @@ async function initOperator() {
   }
   state ??= newWorkspace();
   state.media ??= [];
+  state.look = { ...defaultLook, ...state.look };
   if (state.cue && !songFor(state)) state.cue = null;
   if (state.cue) state.cue.page = Math.max(0, Math.min(state.cue.page, songFor(state).pages.length - 1));
 
@@ -137,23 +143,42 @@ async function initOperator() {
     button('view', 'Present', 'play', '', 'data-id="present"') +
     button('view', 'Song library', 'music', '', 'data-id="library"') +
     button('view', 'Setlists', 'list', '', 'data-id="setlists"') + '</nav>' +
-    '<div class="top-actions">' + iconButton('appearance', 'Appearance settings', 'gear', '', '') +
+    '<div class="top-actions">' + button('theme', '', '', '', 'id="theme-toggle"') +
+    iconButton('appearance', 'Appearance settings', 'gear', '', '') +
     button('projector', '<span class="projector-word">Open projector</span>', 'monitor', 'primary', 'aria-label="Open projector"') + '</div></header>' +
     '<main class="workspace" id="workspace"></main>' +
+    '<footer class="app-footer"><div class="footer-status">' +
+    '<span>' + icon('check') + '<span id="save-status"></span></span><span>' +
+    icon('wifi') + '<span id="offline-status">Preparing offline access…</span></span></div>' +
+    '<small>Sierra Business Solutions, Inc.™</small></footer>' +
     fileInput('library-file', '.json,.js,.txt') + fileInput('setlist-file', '.json') +
     fileInput('image-file', '.gif,.png,.jpg,.jpeg,.webp,.avif,.apng');
   const workspace = $('#workspace');
+  updateTheme();
+
+  function updateTheme() {
+    const day = theme === 'day';
+    document.documentElement.dataset.theme = theme;
+    $('meta[name="theme-color"]').content = day ? '#f4f6f8' : '#101010';
+    const toggle = $('#theme-toggle');
+    const label = day ? 'Night mode' : 'Day mode';
+    toggle.innerHTML = icon(day ? 'moon' : 'sun') + '<span class="theme-word">' + label + '</span>';
+    toggle.setAttribute('aria-label', 'Switch to ' + label.toLowerCase());
+    toggle.title = 'Switch to ' + label.toLowerCase();
+  }
 
   function save() {
     const number = ++saveNumber;
     setSaveStatus('Saving…');
-    write('workspace', 'current', state).then(() => {
+    return write('workspace', 'current', state).then(() => {
       if (number === saveNumber) setSaveStatus('Saved on this device');
+      return true;
     }).catch(() => {
       if (number === saveNumber) {
         setSaveStatus('Changes could not be saved');
         notify('Browser storage could not save the workspace. Export your library and setlist to keep a copy.');
       }
+      return false;
     });
   }
 
@@ -260,16 +285,14 @@ async function initOperator() {
       button('shortcuts', '<span class="help-word">Shortcuts</span>', 'keys', 'ghost', 'aria-label="Keyboard shortcuts"') +
       '</div></div><section class="panel pages-panel"><div class="panel-head"><div><h2 class="panel-title">' + icon('layers') +
       'Song pages</h2><p id="pages-meta"></p></div>' + button('edit-current', 'Edit lyrics', 'edit', '', 'id="edit-current"') +
-      '</div><div class="page-grid" id="pages" aria-label="Jump to page"></div></section></section></div>' +
-      '<footer class="foot"><span>' + icon('check') + '<span id="save-status"></span></span><span>' +
-      icon('wifi') + '<span id="offline-status">Preparing offline access…</span></span></footer>';
+      '</div><div class="page-grid" id="pages" aria-label="Jump to page"></div></section></section></div>';
   }
 
   function updateOffline() {
     const status = $('#offline-status');
     if (!status) return;
     if (!('serviceWorker' in navigator)) status.textContent = 'Offline cache unavailable';
-    else navigator.serviceWorker.ready.then(() => {
+    else Promise.all([navigator.serviceWorker.ready, sharedLibraryTask]).then(() => {
       if (status.isConnected) status.textContent = navigator.onLine ? 'Offline ready' : 'Working offline';
     }).catch(() => { status.textContent = 'Offline cache unavailable'; });
   }
@@ -305,7 +328,7 @@ async function initOperator() {
   function refreshPreview(id, cue, blank) {
     const song = songFor(state, cue);
     const page = song?.pages[cue?.page];
-    drawStage($('#' + id + '-stage'), page, state.look, blank || !page);
+    drawStage($('#' + id + '-stage'), page, id === 'next' && !page ? defaultLook : state.look, blank || !page);
     $('#' + id + '-info').innerHTML = page ?
       '<div><strong>' + e(song.title) + '</strong><small>' + e(page.label) + '</small></div><span class="slide-count">' +
       (cue.page + 1) + ' / ' + song.pages.length + '</span>' :
@@ -548,16 +571,26 @@ async function initOperator() {
       '</output></span><input type="range" data-look="' + name + '" min="' + min + '" max="' + max + '" value="' + state.look[name] + '"></label>';
   }
 
-  function appearance() {
+  const lookSlot = () => appearancePanel === 'blank' ? 'blankBackground' : 'background';
+
+  function appearance(panel = appearancePanel) {
+    appearancePanel = panel;
+    const blankPanel = panel === 'blank';
     const backgrounds = Object.entries(presets).map(([id, preset]) => [id, preset.name])
       .concat(state.media.map(image => [image.id, image.name]));
-    showDialog('Appearance', '<div class="stage look-preview" id="look-preview"></div><div class="form-grid">' +
+    const settings = blankPanel ?
+      lookSelect('Blank background', 'blankBackground', [['solid', 'Solid color'], ['current', 'Match lyrics background'], ...backgrounds]) +
+      '<label class="field" id="blank-color-field">Blank screen color<input type="color" data-look="blankColor" value="' + e(state.look.blankColor) + '"></label>' :
       lookSelect('Background', 'background', backgrounds) + lookRange('Background dim', 'dim', 0, 90, '%') +
       lookSelect('Font family', 'font', [['sans', 'Sans serif'], ['serif', 'Serif'], ['mono', 'Monospace']]) +
       lookRange('Text scale', 'size', 50, 160, '%') +
       lookSelect('Font weight', 'weight', [[400, 'Regular'], [600, 'Semibold'], [700, 'Bold'], [900, 'Heavy']]) +
       lookSelect('Alignment', 'align', [['center', 'Center'], ['left', 'Left'], ['right', 'Right']]) +
-      '<label class="field">Text color<input type="color" data-look="color" value="' + e(state.look.color) + '"></label></div>' +
+      '<label class="field">Text color<input type="color" data-look="color" value="' + e(state.look.color) + '"></label>';
+    const tabs = '<div class="button-group appearance-tabs" role="group" aria-label="Appearance view">' +
+      button('look-lyrics', 'Lyrics', 'layers', '', 'aria-pressed="' + !blankPanel + '"') +
+      button('look-blank', 'Blank screen', 'blank', '', 'aria-pressed="' + blankPanel + '"') + '</div>';
+    showDialog('Appearance', tabs + '<div class="stage look-preview" id="look-preview"></div><div class="form-grid">' + settings + '</div>' +
       '<div class="button-group">' + button('upload-image', 'Upload image or GIF', 'image') +
       button('delete-image', 'Remove upload', 'trash', 'danger', 'id="delete-image"') + '</div>',
       button('reset-look', 'Reset appearance', '', 'ghost left') + button('close', 'Done', 'check', 'primary'));
@@ -566,9 +599,11 @@ async function initOperator() {
 
   function refreshLookPreview() {
     const host = $('#look-preview');
-    if (!host) return;
-    drawStage(host, songFor(state)?.pages[state.cue?.page] ?? { lyrics: 'Your lyrics will appear here' }, state.look);
-    $('#delete-image').disabled = !state.media.some(image => image.id === state.look.background);
+    if (!dialog.open || !host) return;
+    drawStage(host, songFor(state)?.pages[state.cue?.page] ?? { lyrics: 'Your lyrics will appear here' }, state.look, appearancePanel === 'blank');
+    const colorField = $('#blank-color-field');
+    if (colorField) colorField.hidden = state.look.blankBackground !== 'solid';
+    $('#delete-image').disabled = !state.media.some(image => image.id === state.look[lookSlot()]);
   }
 
   function applyLook() {
@@ -578,7 +613,7 @@ async function initOperator() {
     save();
   }
 
-  async function addImage(file) {
+  async function addImage(file, slot) {
     if (file.size > 25 * 1024 * 1024) throw new Error('Choose an image or GIF smaller than 25 MB.');
     const extension = file.name.split('.').pop().toLowerCase();
     const types = { gif: 'image/gif', png: 'image/png', apng: 'image/apng', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif' };
@@ -597,9 +632,9 @@ async function initOperator() {
     const id = uid();
     await write('media', id, blob);
     state.media.push({ id, name: file.name.slice(0, 120) });
-    state.look.background = id;
+    state.look[slot] = id;
     applyLook();
-    appearance();
+    if (dialog.open && $('#look-preview')) appearance(slot === 'blankBackground' ? 'blank' : 'lyrics');
     notify('Background saved on this device.');
   }
 
@@ -647,8 +682,15 @@ async function initOperator() {
   async function action(name, id) {
     switch (name) {
       case 'view': changeView(id); break;
+      case 'theme':
+        theme = theme === 'day' ? 'night' : 'day';
+        updateTheme();
+        try { localStorage.setItem(themeKey, JSON.stringify(theme)); } catch { /* Theme still applies for this visit. */ }
+        break;
       case 'projector': openProjector(); break;
-      case 'appearance': appearance(); break;
+      case 'appearance':
+      case 'look-lyrics': appearance('lyrics'); break;
+      case 'look-blank': appearance('blank'); break;
       case 'close': closeDialog(); break;
       case 'previous': step(-1); break;
       case 'next': step(1); break;
@@ -722,11 +764,15 @@ async function initOperator() {
           save();
         }
         break;
-      case 'upload-image': $('#image-file').click(); break;
+      case 'upload-image':
+        uploadSlot = lookSlot();
+        $('#image-file').click();
+        break;
       case 'delete-image': {
-        const id = state.look.background;
+        const id = state.look[lookSlot()];
         state.media = state.media.filter(image => image.id !== id);
-        state.look.background = defaultLook.background;
+        if (state.look.background === id) state.look.background = defaultLook.background;
+        if (state.look.blankBackground === id) state.look.blankBackground = defaultLook.blankBackground;
         applyLook();
         appearance();
         await write('media', id, undefined);
@@ -766,24 +812,61 @@ async function initOperator() {
     }
   });
 
+  function addToLibrary(songs) {
+    const before = state.songs.length;
+    mergeSongs(state.songs, songs);
+    const library = $('#library-list');
+    if (library) renderLibrary(library, $('#search-library').value, false);
+    const picker = $('#picker-list');
+    if (dialog.open && picker) renderLibrary(picker, $('#picker-search').value, true);
+    return state.songs.length - before;
+  }
+
+  async function loadSharedLibrary() {
+    if (state.sharedLibraryLoaded || !navigator.onLine) return;
+    let response;
+    try {
+      response = await fetch(new URL('./songs.js', import.meta.url), {
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch {
+      return;
+    }
+    if (response.status === 404) return;
+    try {
+      if (!response.ok || Number(response.headers.get('Content-Length')) > 15 * 1024 * 1024) {
+        throw new Error('The shared song file is unavailable or too large.');
+      }
+      const contents = await response.text();
+      if (contents.length > 15 * 1024 * 1024) throw new Error('The shared song file is too large.');
+      const added = addToLibrary(parseLibrary(contents, 'songs.js'));
+      state.sharedLibraryLoaded = true;
+      if (!await save()) state.sharedLibraryLoaded = false;
+      else if (added) notify('Loaded ' + plural(added, 'shared song') + '. Open Song library to browse.');
+    } catch {
+      notify('The shared song library could not load. You can still import songs from your computer.');
+    }
+  }
+
+  function checkSharedLibrary() {
+    sharedLibraryTask ??= loadSharedLibrary().finally(() => { sharedLibraryTask = null; });
+  }
+
   async function readFile(input) {
     const file = input.files[0];
     input.value = '';
     if (!file) return;
     if (input.id === 'image-file') {
-      await addImage(file);
+      await addImage(file, uploadSlot);
       return;
     }
     if (file.size > 15 * 1024 * 1024) throw new Error('Choose a song or setlist file smaller than 15 MB.');
     const contents = await file.text();
     if (input.id === 'library-file') {
       const songs = parseLibrary(contents, file.name);
-      const before = state.songs.length;
-      mergeSongs(state.songs, songs);
-      const added = state.songs.length - before;
-      const query = $('#search-library')?.value ?? '';
+      const added = addToLibrary(songs);
       if (view !== 'library') render('library');
-      else renderLibrary($('#library-list'), query, false);
       save();
       notify('Imported ' + plural(added, 'song') + (added < songs.length ? ' · ' + (songs.length - added) + ' already in library' : '') + '.');
     } else {
@@ -868,8 +951,12 @@ async function initOperator() {
     }
   });
 
-  window.addEventListener('online', updateOffline);
+  window.addEventListener('online', () => {
+    checkSharedLibrary();
+    updateOffline();
+  });
   window.addEventListener('offline', updateOffline);
+  checkSharedLibrary();
   render('present');
   sync();
 }
