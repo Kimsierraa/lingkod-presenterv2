@@ -6,6 +6,14 @@ Extract the entire ZIP into one folder. With Node.js installed, double-click **L
 
 Use the same browser profile and address each time to reopen your saved workspace. The footer shows **Offline ready** after the first successful load. The operator and projector use the browser’s local storage and cached app files. Use one operator window per workspace.
 
+## Start with Wi-Fi off
+
+Use the Windows launcher to serve the app from the laptop. **http://127.0.0.1:4173/** is a local address and works with Wi-Fi off, even on the first launch. Install Node.js ahead of time on any laptop that needs it. Keep the launcher open while presenting.
+
+The offline Windows package includes the supplied **songs.js** in **dist**, so the songs load automatically the first time you use the local address. If you use the regular Windows package, place **songs.js** in **dist**, alongside **index.html**, before launching. **Song library → Import songs** can also add files from the laptop.
+
+To bring a setlist from the hosted version to the offline laptop, export it from **Setlists** on the hosted site and import the file under **Setlists → Import setlist** at the local address.
+
 ## Import your songs and present
 
 1. Open **Song library → Import songs** and select **songs.js** from Downloads. Search by title or author. Import also accepts JSON and TXT. Exact duplicate songs are skipped.
@@ -16,6 +24,10 @@ Use the same browser profile and address each time to reopen your saved workspac
 6. Open the gear menu for built-in backdrops, an uploaded image or GIF, dimming, typeface, scale, weight, alignment and color. The same appearance applies to the operator previews and projector. Uploads are saved on the device and the browser plays animated files directly.
 7. In the gear menu, choose **Blank screen** to set a solid color, match the lyrics background, or use a separate image or GIF. Press **B** in the operator window to show this screen with lyrics hidden.
 8. Use the sun or moon button in the top bar to switch between Day and Night mode. The browser remembers your choice for the operator interface.
+
+## Present on one laptop
+
+Select a song and click **Laptop Mode** on the **Present** page. The lyrics fill the main panel in the same window. Use **Previous**, **Next**, the page picker, or the arrow keys. **Back to setlist** or **Esc** returns to the presentation workspace at the current page.
 
 ## Shortcuts
 

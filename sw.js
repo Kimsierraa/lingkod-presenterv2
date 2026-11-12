@@ -1,4 +1,4 @@
-const version = 'lingkod-v2-20261113-3';
+const version = 'lingkod-v2-20261113-5';
 const cacheName = version + ':' + self.registration.scope;
 const shell = [
   './index.html', './style.css', './app.mjs', './core.mjs', './stage.mjs', './store.mjs', './ui.mjs',

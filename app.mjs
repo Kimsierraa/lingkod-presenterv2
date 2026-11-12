@@ -253,7 +253,15 @@ async function initOperator() {
   }
 
   function changeView(next) {
-    if (next !== view) render(next);
+    if (next === view) return;
+    const leavingLaptop = view === 'laptop';
+    render(next);
+    if (next === 'laptop') {
+      notice.hidden = true;
+      $('#laptop-stage').focus({ preventScroll: true });
+    } else if (leavingLaptop && next === 'present') {
+      $('#laptop-mode').focus({ preventScroll: true });
+    }
   }
 
   function heading(title, subtitle, actions = '') {
@@ -269,7 +277,9 @@ async function initOperator() {
   }
 
   function presentation() {
-    return heading('Presentation', 'Cue lyrics and control your projector', '<span id="connection" class="connection" role="status"></span>') +
+    return heading('Presentation', 'Cue lyrics and control your projector',
+      button('view', 'Laptop Mode', 'expand', '', 'id="laptop-mode" data-id="laptop"') +
+      '<span id="connection" class="connection" role="status"></span>') +
       '<div class="work-grid"><aside class="panel setlist-panel"><div class="panel-head"><h2 class="panel-title">' +
       icon('list') + 'Setlist</h2>' + iconButton('add-songs', 'Add songs', 'plus', '', '') + '</div>' +
       '<div class="list-name" id="list-name"></div><ol class="queue" id="queue" aria-label="Setlist song order"></ol>' +
@@ -288,6 +298,18 @@ async function initOperator() {
       '</div><div class="page-grid" id="pages" aria-label="Jump to page"></div></section></section></div>';
   }
 
+  function laptopPresentation() {
+    return '<section class="laptop-console" aria-label="Laptop Mode"><header class="laptop-head">' +
+      button('view', 'Back to setlist', 'left', '', 'data-id="present"') +
+      '<div class="laptop-song"><h1 id="laptop-title"></h1><small id="laptop-position" aria-live="polite"></small></div>' +
+      iconButton('blank', 'Blank screen (B)', 'blank', 'id="blank" aria-pressed="false"', '') + '</header>' +
+      '<div class="stage laptop-stage" id="laptop-stage" role="region" aria-label="Current lyrics" tabindex="-1"></div>' +
+      '<div class="laptop-controls" aria-label="Page controls">' +
+      button('previous', 'Previous', 'left', '', 'id="previous"') +
+      '<label class="laptop-page-picker"><span>Jump to page</span><select id="laptop-page"></select></label>' +
+      button('next', 'Next', 'right', 'primary', 'id="next"') + '</div></section>';
+  }
+
   function updateOffline() {
     const status = $('#offline-status');
     if (!status) return;
@@ -298,8 +320,9 @@ async function initOperator() {
   }
 
   function render(nextView = view) {
-    if (view === 'present') workspace.querySelectorAll('.stage').forEach(disposeStage);
+    workspace.querySelectorAll('.stage').forEach(disposeStage);
     view = nextView;
+    document.body.classList.toggle('laptop-mode', view === 'laptop');
     for (const tab of document.querySelectorAll('.topnav button')) {
       if (tab.dataset.id === view) tab.setAttribute('aria-current', 'page');
       else tab.removeAttribute('aria-current');
@@ -309,6 +332,9 @@ async function initOperator() {
       setSaveStatus(storageMessage);
       refreshPresent();
       updateOffline();
+    } else if (view === 'laptop') {
+      workspace.innerHTML = laptopPresentation();
+      refreshPresent();
     } else if (view === 'library') {
       workspace.innerHTML = '<div class="library-view">' + heading('Song library', 'Search, import, and prepare lyrics for your setlist.',
         button('import-library', 'Import songs', 'upload') + button('edit-song', 'New song', 'plus', 'primary')) +
@@ -350,18 +376,22 @@ async function initOperator() {
   }
 
   function refreshPresent() {
-    if (view !== 'present') return;
-    const focus = document.activeElement;
-    const focusAction = focus?.dataset.action;
-    const focusId = focus?.dataset.id;
+    if (view !== 'present' && view !== 'laptop') return;
     const song = songFor(state);
     const next = adjacentCue(state, 1);
-    refreshQueue();
-    refreshPreview('current', state.cue, state.blank);
-    refreshPreview('next', next, false);
     $('#previous').disabled = !adjacentCue(state, -1);
     $('#next').disabled = !next;
     $('#blank').setAttribute('aria-pressed', state.blank);
+    if (view === 'laptop') {
+      refreshLaptop(song);
+      return;
+    }
+    const focus = document.activeElement;
+    const focusAction = focus?.dataset.action;
+    const focusId = focus?.dataset.id;
+    refreshQueue();
+    refreshPreview('current', state.cue, state.blank);
+    refreshPreview('next', next, false);
     $('#blank-label').textContent = state.blank ? 'Restore screen' : 'Blank screen';
     $('#edit-current').disabled = !song;
     $('#pages-meta').textContent = song ? song.title + ' · ' + plural(song.pages.length, 'page') : 'Select a song to see its pages';
@@ -380,6 +410,30 @@ async function initOperator() {
       $(selector, workspace)?.focus({ preventScroll: true });
     }
     refreshConnection();
+  }
+
+  function refreshLaptop(song) {
+    const pageIndex = state.cue?.page ?? 0;
+    const page = song?.pages[pageIndex];
+    drawStage($('#laptop-stage'), page, state.look, state.blank || !page);
+    $('#laptop-title').textContent = song?.title ?? 'No song selected';
+    $('#laptop-position').textContent = page ?
+      page.label + ' · ' + (pageIndex + 1) + ' / ' + song.pages.length : 'Select a song from the setlist';
+
+    const picker = $('#laptop-page');
+    const songId = song?.id ?? '';
+    if (picker.dataset.songId !== songId) {
+      picker.dataset.songId = songId;
+      picker.replaceChildren(...(song?.pages.map((item, index) => new Option((index + 1) + ' · ' + item.label, index)) ??
+        [new Option('No pages', '')]));
+    }
+    picker.disabled = !page;
+    if (page) picker.value = String(pageIndex);
+
+    const blankLabel = state.blank ? 'Restore lyrics (B)' : 'Blank screen (B)';
+    const blankButton = $('#blank');
+    blankButton.title = blankLabel;
+    blankButton.setAttribute('aria-label', blankLabel);
   }
 
   function renderLibrary(container, query, picker) {
@@ -650,7 +704,8 @@ async function initOperator() {
   function shortcuts() {
     const items = [
       ['Previous page', '←', 'PgUp'], ['Next page', '→', 'Space', 'PgDn'], ['First / last page of song', 'Home', 'End'],
-      ['Jump to page 1–9', '1–9'], ['Blank / restore projector', 'B'], ['Search song library', '/'],
+      ['Jump to page 1–9', '1–9'], ['Blank / restore lyrics', 'B'], ['Search song library', '/'],
+      ['Return to setlist in Laptop Mode', 'Esc'],
       ['Fullscreen in projector window', 'F'], ['Show shortcuts', '?'],
     ];
     showDialog('Keyboard shortcuts', '<div class="shortcut-list">' + items.map(([label, ...keys]) =>
@@ -823,7 +878,7 @@ async function initOperator() {
   }
 
   async function loadSharedLibrary() {
-    if (state.sharedLibraryLoaded || !navigator.onLine) return;
+    if (state.sharedLibraryLoaded) return;
     let response;
     try {
       response = await fetch(new URL('./songs.js', import.meta.url), {
@@ -881,6 +936,10 @@ async function initOperator() {
 
   document.addEventListener('change', ({ target }) => {
     if (target.type === 'file') void readFile(target).catch(showError);
+    if (target.id === 'laptop-page' && target.value !== '') {
+      pageCue(Number(target.value));
+      $('#laptop-stage').focus({ preventScroll: true });
+    }
   });
 
   document.addEventListener('dragstart', event => {
@@ -934,7 +993,10 @@ async function initOperator() {
     } else if (pressed === 'b') {
       event.preventDefault();
       blank();
-    } else if (view === 'present') {
+    } else if (view === 'laptop' && pressed === 'escape') {
+      event.preventDefault();
+      changeView('present');
+    } else if (view === 'present' || view === 'laptop') {
       const previous = ['arrowleft', 'arrowup', 'pageup'].includes(pressed);
       const next = ['arrowright', 'arrowdown', 'pagedown', ' '].includes(pressed);
       if (pressed === ' ' && event.target.closest('button, a')) return;

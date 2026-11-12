@@ -226,6 +226,22 @@ dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
 .projector-tools { position: fixed; z-index: 3; right: 14px; top: 14px; opacity: 0; transition: opacity .18s; }
 .projector-tools:hover, .projector-tools:focus-within, .projector-tools.visible { opacity: 1; }
 .projector.idle-cursor { cursor: none; }
+.laptop-mode #app { height: 100dvh; }
+.laptop-mode .topbar, .laptop-mode .footer-status { display: none; }
+.laptop-mode .workspace { max-width: none; min-height: 0; padding: 0; }
+.laptop-mode .app-footer { max-width: none; justify-content: flex-end; padding: 4px 12px 7px; border: 0; }
+.laptop-mode .toast { top: 56px; right: 12px; bottom: auto; left: auto; transform: none; }
+.laptop-console { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px 4px; }
+.laptop-head { display: grid; grid-template-columns: minmax(125px, 1fr) minmax(0, 3fr) minmax(125px, 1fr); align-items: center; gap: 10px; }
+.laptop-head > .btn:first-child { justify-self: start; }
+.laptop-head > .btn:last-child { justify-self: end; }
+.laptop-song { min-width: 0; text-align: center; }
+.laptop-song h1 { font-size: clamp(16px, 2.2vw, 22px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.laptop-song small { display: block; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 3px; }
+.laptop-stage { min-height: 0; border: 1px solid var(--line); border-radius: var(--radius); }
+.laptop-controls { display: grid; grid-template-columns: auto minmax(0, 200px) auto; gap: 9px; justify-content: center; align-items: end; }
+.laptop-page-picker { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 11px; }
+.laptop-page-picker select { width: 100%; min-height: 36px; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--raised); color: var(--text); }
 @media (max-width: 1070px) {
   .topbar { padding: 0 19px; gap: 13px; }
   .workspace, .app-footer { padding-left: 19px; padding-right: 19px; }
@@ -250,6 +266,10 @@ dialog::backdrop { background: #0009; backdrop-filter: blur(3px); }
   .sidebar-footer { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 465px) {
+  .laptop-console { gap: 8px; padding: 8px 8px 4px; }
+  .laptop-head { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; }
+  .laptop-song h1 { font-size: 15px; }
+  .laptop-song small { font-size: 10px; }
   .top-actions .projector-word, .top-actions .theme-word { display: none; }
   .top-actions { gap: 5px; }
   .top-actions .btn { width: 36px; padding: 0; }
